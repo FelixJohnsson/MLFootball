@@ -17,10 +17,12 @@ def _closest_on_segment(px: float, py: float, ax: float, ay: float, bx: float, b
     apx, apy = px - ax, py - ay
     ab2 = abx * abx + aby * aby
     if ab2 < 1e-18:
-        return ax, ay, math.hypot(px - ax, py - ay)
+        dx, dy = px - ax, py - ay
+        return ax, ay, dx * dx + dy * dy
     t = max(0.0, min(1.0, (apx * abx + apy * aby) / ab2))
     sx, sy = ax + t * abx, ay + t * aby
-    return sx, sy, math.hypot(px - sx, py - sy)
+    dx, dy = px - sx, py - sy
+    return sx, sy, dx * dx + dy * dy
 
 
 
@@ -50,9 +52,9 @@ ATTACK_RIGHT_GOAL_FALLBACK_X_FRAC = 200  # fallback: spread horizontally along t
 # -----------------------------------------------------------------------------
 # Roster shooting into the −x goal (often drawn as the ``right'' team — starts +x half).
 # -----------------------------------------------------------------------------
-ATTACK_LEFT_GOAL_TEAM1_SPAWN_X_FRACS = (0.50, 0.52)
-ATTACK_LEFT_GOAL_TEAM2_SPAWN_X_FRACS = (0.60, 0.60)
-ATTACK_LEFT_GOAL_SPAWN_Y_JITTER = (-1.0, 1.0)
+ATTACK_LEFT_GOAL_TEAM1_SPAWN_X_FRACS = (0.50, 0.75)
+ATTACK_LEFT_GOAL_TEAM2_SPAWN_X_FRACS = (0.50, 0.75)
+ATTACK_LEFT_GOAL_SPAWN_Y_JITTER = (-200.0, 200.0)
 ATTACK_LEFT_GOAL_PAIR_CENTER_DIST_PAD = 4.0
 ATTACK_LEFT_GOAL_PAIR_PLACE_TRIES = 80
 ATTACK_LEFT_GOAL_FALLBACK_X_FRAC = 0.51  # fallback: spread horizontally along this band
@@ -80,12 +82,14 @@ class Player:
 
     def _clamp_to_pitch(self) -> None:
         rp = self.radius
+        rp_sq = (rp - 1e-6) ** 2
         edges = pitch_wall_collision_edges()
-        for _ in range(6):
+        for _ in range(2):
             for ax, ay, bx, by, *_ in edges:
-                cx, cy, dist = _closest_on_segment(self.x, self.y, ax, ay, bx, by)
-                if dist >= rp - 1e-6 or dist < 1e-9:
+                cx, cy, dist_sq = _closest_on_segment(self.x, self.y, ax, ay, bx, by)
+                if dist_sq >= rp_sq or dist_sq < 1e-18:
                     continue
+                dist = math.sqrt(dist_sq)
                 nx = (self.x - cx) / dist
                 ny = (self.y - cy) / dist
                 self.x += nx * (rp - dist)

@@ -223,6 +223,7 @@ def main() -> None:
             ent_coef=0.01,
             verbose=1,
             tensorboard_log=str(log_dir),
+            device="cpu"
         )
 
     if args.controlled_scores_into_right_net:

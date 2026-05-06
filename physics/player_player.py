@@ -5,15 +5,16 @@ from __future__ import annotations
 import math
 
 
-def resolve_player_player(a, b) -> None:
-    """Push two players apart if their circles overlap; clamp to pitch."""
+def resolve_player_player(a, b) -> bool:
     dx = float(b.x - a.x)
     dy = float(b.y - a.y)
-    dist = math.hypot(dx, dy)
     ra, rb = float(a.radius), float(b.radius)
     min_d = ra + rb
-    if dist >= min_d or dist < 1e-9:
-        return
+    dist_sq = dx * dx + dy * dy
+    min_d_sq = min_d * min_d
+    if dist_sq >= min_d_sq or dist_sq < 1e-18:
+        return False
+    dist = math.sqrt(dist_sq)
     nx, ny = dx / dist, dy / dist
     penetration = min_d - dist
     half = penetration * 0.5
@@ -23,3 +24,4 @@ def resolve_player_player(a, b) -> None:
     b.y += ny * half
     a._clamp_to_pitch()
     b._clamp_to_pitch()
+    return True

@@ -13,7 +13,6 @@ Usage
 from __future__ import annotations
 
 import argparse
-import functools
 import sys
 from pathlib import Path
 
@@ -34,56 +33,32 @@ from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     EvalCallback,
 )
-from stable_baselines3.common.vec_env import VecMonitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecMonitor
 
-from sim import AttackerTeamRlEnv
-from sim.frozen_opposing_team_policy import SharedPolicyRef
-from sim.partner_attackers_vec_env import PartnerAttackersVecEnv
+from sim.single_ego_gym_env import SingleEgoGymEnv
 
 
-def team_factory(
-    seed: int,
-    *,
-    frame_skip: int,
-    opposing_team_policy_ref: SharedPolicyRef,
-    controlled_scores_into_right_net: bool,
-) -> AttackerTeamRlEnv:
-    e = AttackerTeamRlEnv(
+def _env_kwargs(controlled_scores_into_right_net: bool, frame_skip: int) -> dict:
+    """Shared env constructor kwargs (picklable plain dict)."""
+    return dict(
         max_ticks=stc.MAX_TICKS,
         dt=1.0 / 60.0,
         frame_skip=frame_skip,
         stagnant_ball_env_steps=stc.STAGNANT_BALL_ENV_STEPS,
         stagnant_ball_penalty=stc.STAGNANT_BALL_PENALTY,
         stagnant_ball_speed_eps=stc.STAGNANT_BALL_SPEED_EPS,
-        opposing_team_policy_ref=opposing_team_policy_ref,
         controlled_scores_into_right_net=controlled_scores_into_right_net,
         reward_weights=stc.SINGLE_REWARD_WEIGHTS,
     )
-    e.reset(seed=seed)
-    return e
 
 
-def build_partner_vec_single(
-    n_slots: int,
-    frame_skip: int,
-    *,
-    seed_base: int = 0,
-    opposing_team_policy_ref: SharedPolicyRef,
-    controlled_scores_into_right_net: bool,
-) -> PartnerAttackersVecEnv:
-    if n_slots < 1:
-        raise ValueError("--n_envs must be >= 1 (single-ego training).")
-    fns = [
-        functools.partial(
-            team_factory,
-            seed_base + k,
-            frame_skip=frame_skip,
-            opposing_team_policy_ref=opposing_team_policy_ref,
-            controlled_scores_into_right_net=controlled_scores_into_right_net,
-        )
-        for k in range(n_slots)
-    ]
-    return PartnerAttackersVecEnv(fns, dual_ego_training=False)
+def _make_env(seed: int, env_kwargs: dict):
+    """Return a zero-arg factory that SubprocVecEnv calls in the child process."""
+    def _init():
+        env = SingleEgoGymEnv(**env_kwargs)
+        env.reset(seed=seed)
+        return env
+    return _init
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,7 +68,7 @@ def parse_args() -> argparse.Namespace:
         "--n_envs",
         type=int,
         default=stc.N_ENVS_DEFAULT,
-        help="Parallel matches (one primary policy row each).",
+        help="Parallel matches (one per subprocess).",
     )
     p.add_argument("--frame_skip", type=int, default=stc.FRAME_SKIP, help="Sim ticks per agent step")
     p.add_argument("--log_dir", type=str, default=stc.LOG_DIR, help="TensorBoard log dir")
@@ -156,24 +131,18 @@ def main() -> None:
     best_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    opposing_policy_shared = SharedPolicyRef()
-    train_env = build_partner_vec_single(
-        args.n_envs,
-        args.frame_skip,
-        seed_base=0,
-        opposing_team_policy_ref=opposing_policy_shared,
-        controlled_scores_into_right_net=args.controlled_scores_into_right_net,
+    ekw = _env_kwargs(args.controlled_scores_into_right_net, args.frame_skip)
+
+    # --- Training envs: one subprocess per match ---
+    train_env = SubprocVecEnv(
+        [_make_env(k, ekw) for k in range(args.n_envs)],
+        start_method="spawn",
     )
     train_envs = VecMonitor(train_env)
 
-    eval_partner = build_partner_vec_single(
-        1,
-        args.frame_skip,
-        seed_base=10_000,
-        opposing_team_policy_ref=opposing_policy_shared,
-        controlled_scores_into_right_net=args.controlled_scores_into_right_net,
-    )
-    eval_env = VecMonitor(eval_partner)
+    # --- Eval env: single process is fine for 1 env ---
+    eval_env = DummyVecEnv([_make_env(10_000, ekw)])
+    eval_env = VecMonitor(eval_env)
 
     eval_cb = EvalCallback(
         eval_env,
@@ -195,7 +164,7 @@ def main() -> None:
         rp = Path(args.resume)
         base = rp.parent / rp.stem if rp.suffix.lower() == ".zip" else rp
         print(f"Resuming from {base}.zip …")
-        model = PPO.load(str(base), env=train_envs, tensorboard_log=str(log_dir))
+        model = PPO.load(str(base), env=train_envs, device="cpu", tensorboard_log=str(log_dir))
     else:
         model = PPO(
             policy="MlpPolicy",
@@ -208,16 +177,17 @@ def main() -> None:
             gae_lambda=stc.PPO_GAE_LAMBDA,
             clip_range=stc.PPO_CLIP_RANGE,
             ent_coef=stc.PPO_ENT_COEF,
+            device="cpu",
             verbose=1,
             tensorboard_log=str(log_dir),
         )
 
     if args.controlled_scores_into_right_net:
-        print("LEFT_TEAM: mirrored policy on RIGHT_TEAM (frozen predict).")
+        print("LEFT_TEAM: opposing team uses heuristic chase.")
     else:
         print("RIGHT_TEAM: LEFT_TEAM heuristic (no mirrored policy).")
 
-    print(f"Training for {args.steps:,} steps, n_envs={args.n_envs} …")
+    print(f"Training for {args.steps:,} steps, n_envs={args.n_envs} (SubprocVecEnv) …")
     model.learn(
         total_timesteps=args.steps,
         callback=CallbackList([eval_cb, ckpt_cb, goals_cb]),
@@ -227,7 +197,27 @@ def main() -> None:
 
     final_path = model_dir / f"{model_base}_final"
     model.save(str(final_path))
-    print(f"Final model saved -> {final_path}.zip")
+    print(rf"""
+        ╔══════════════════════════════════════════════════════════════╗
+        ║                                                              ║
+        ║   __  __ _      _____           _   _           _ _          ║
+        ║  |  \/  | |    |  ___|__   ___ | |_| |__   __ _| | |         ║
+        ║  | |\/| | |    | |_ / _ \ / _ \| __| '_ \ / _` | | |         ║
+        ║  | |  | | |___ |  _| (_) | (_) | |_| |_) | (_| | | |         ║
+        ║  |_|  |_|_____||_|  \___/ \___/ \__|_.__/ \__,_|_|_|         ║
+        ║                                                              ║
+        ║                 2v2 AGENT TRAINING COMPLETE                  ║
+        ║                                                              ║
+        ║        O     O                         O     O               ║
+        ║       /|\   /|\          ●            /|\   /|\              ║
+        ║       / \   / \        _/ \_          / \   / \              ║
+        ║                                                              ║
+        ║             FINAL MODEL SAVED TO THE LOCKER ROOM             ║
+        ║                                                              ║
+        ║             → {final_path}.zip                               ║
+        ║                                                              ║
+        ╚══════════════════════════════════════════════════════════════╝
+        """)
 
     train_envs.close()
     eval_env.close()

@@ -14,19 +14,17 @@ def _clamp(x: float, lo: float, hi: float) -> float:
 
 # After ``resolve_ball_player`` / iterative physics, snap ball vs pitch — tuning.
 REAPPLY_PITCH_PER_PHYS_ITERATION = 1
-REAPPLY_PITCH_AFTER_PHYS_LOOP = 8
+REAPPLY_PITCH_AFTER_PHYS_LOOP = 2
 
 
-def _closest_on_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> tuple[float, float, float]:
+def _closest_on_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> tuple[float, float]:
     abx, aby = bx - ax, by - ay
     apx, apy = px - ax, py - ay
     ab2 = abx * abx + aby * aby
     if ab2 < 1e-18:
-        d = math.hypot(px - ax, py - ay)
-        return ax, ay, d
+        return ax, ay
     t = max(0.0, min(1.0, (apx * abx + apy * aby) / ab2))
-    cx, cy = ax + t * abx, ay + t * aby
-    return cx, cy, math.hypot(px - cx, py - cy)
+    return ax + t * abx, ay + t * aby
 
 
 @dataclass
@@ -124,7 +122,7 @@ class Ball:
         Works when the centre is **outside** the field: Euclidean distance to the
         segment can exceed ``r``, so the old ``dist < r`` test never fired.
         """
-        cx, cy, _dist_euclid = _closest_on_segment(self.x, self.y, ax, ay, bx, by)
+        cx, cy = _closest_on_segment(self.x, self.y, ax, ay, bx, by)
         r = self.r
         vx = self.x - cx
         vy = self.y - cy
@@ -223,7 +221,7 @@ class Ball:
     def update(self, dt: float) -> None:
         self._apply_drag(dt)
         self.integrate(dt)
-        for _ in range(5):
+        for _ in range(2):
             self.resolve_collisions()
         self._cap_speed()
 

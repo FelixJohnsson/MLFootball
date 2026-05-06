@@ -6,13 +6,13 @@ Top-down pitch sim (Pygame demo + headless stepping + PPO training for 2-vs-2 wi
 
 ## Layout
 
-| Area | Modules | Depends on pygame? |
-|------|---------|--------------------|
-| **Field geometry** | `field.py` | No |
-| **Physics** | `physics/` (`ball.py`, `ball_player.py`) | No |
-| **Player** | `player.py` | No |
-| **Simulation** | `sim/` (`game.py`, `actions.py`, `attacker_team_env.py`, …) | No |
-| **Rendering** | `render/` (`scene.py`, `markings.py`, `goals.py`, `colors.py`, `pygame_shell.py`) | Yes |
+| Area               | Modules                                                                           | Depends on pygame? |
+| ------------------ | --------------------------------------------------------------------------------- | ------------------ |
+| **Field geometry** | `field.py`                                                                        | No                 |
+| **Physics**        | `physics/` (`ball.py`, `ball_player.py`)                                          | No                 |
+| **Player**         | `player.py`                                                                       | No                 |
+| **Simulation**     | `sim/` (`game.py`, `actions.py`, `attacker_team_env.py`, …)                       | No                 |
+| **Rendering**      | `render/` (`scene.py`, `markings.py`, `goals.py`, `colors.py`, `pygame_shell.py`) | Yes                |
 
 Train or script against `sim` only; attach `render` when you want a window.
 
@@ -61,25 +61,25 @@ PPO with parameter sharing across the two blues; greens are frozen (heuristic ch
 
 **Pitch “left/right team” ≠ “shoot at left/right net”.** Matches `player.py` spawn bands (`ATTACK_RIGHT_GOAL_*`, `ATTACK_LEFT_GOAL_*`):
 
-| Colloquial | Spawn side (approx.) | Scoring mouth | Flag / ctor |
-|------------|---------------------|---------------|---------------|
-| **Left team** | Left / −x half (`ATTACK_RIGHT_GOAL_*`) | **+x (right) net** | Default if you omit flags; **`--left_team`** (explicit). `controlled_scores_into_right_net=True` |
-| **Right team** | Right / +x half (`ATTACK_LEFT_GOAL_*`) | **−x (left) net** | **`--right_team`**. `controlled_scores_into_right_net=False` |
+| Colloquial     | Spawn side (approx.)                   | Scoring mouth      | Flag / ctor                                                                                      |
+| -------------- | -------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------ |
+| **Left team**  | Left / −x half (`ATTACK_RIGHT_GOAL_*`) | **+x (right) net** | Default if you omit flags; **`--left_team`** (explicit). `controlled_scores_into_right_net=True` |
+| **Right team** | Right / +x half (`ATTACK_LEFT_GOAL_*`) | **−x (left) net**  | **`--right_team`**. `controlled_scores_into_right_net=False`                                     |
 
 Pygame HUD colors still call the RL pair “blue” and the frozen pair “green”; naming above is geometric. **`--left_team`** and **`--right_team`** are mutually exclusive.
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--steps` | `1000000` | Total training timesteps |
-| `--n_envs` | `8` | Vec width (must be **even**: two policy rows per match) |
-| `--frame_skip` | `4` | Sim ticks per agent step (match eval / watch) |
-| `--log_dir` | `./logs/ppo_football` | TensorBoard log directory |
-| `--model_dir` | `./models` | Checkpoints, `best_model`, and final save root |
-| `--resume` | *(none)* | SB3 checkpoint path **without** `.zip` (same style as `--model` in watch) |
-| `--save_tag` | *(none)* | Suffix for `ppo_football_<tag>_*`, `best_model_<tag>/`, `checkpoints_<tag>/` |
-| *(omit team flags)* | — | **`LEFT`** team training (`controlled_scores_into_right_net=True`, `scoring_net=="right"` is good) |
-| `--left_team` | — | Same as omitting flags — explicit LEFT team (**+x** primary) |
-| `--right_team` | — | **RIGHT** team (−x primary; `scoring_net=="left"` is good) |
+| Flag                | Default               | Description                                                                                        |
+| ------------------- | --------------------- | -------------------------------------------------------------------------------------------------- |
+| `--steps`           | `1000000`             | Total training timesteps                                                                           |
+| `--n_envs`          | `8`                   | Vec width (must be **even**: two policy rows per match)                                            |
+| `--frame_skip`      | `4`                   | Sim ticks per agent step (match eval / watch)                                                      |
+| `--log_dir`         | `./logs/ppo_football` | TensorBoard log directory                                                                          |
+| `--model_dir`       | `./models`            | Checkpoints, `best_model`, and final save root                                                     |
+| `--resume`          | _(none)_              | SB3 checkpoint path **without** `.zip` (same style as `--model` in watch)                          |
+| `--save_tag`        | _(none)_              | Suffix for `ppo_football_<tag>_*`, `best_model_<tag>/`, `checkpoints_<tag>/`                       |
+| _(omit team flags)_ | —                     | **`LEFT`** team training (`controlled_scores_into_right_net=True`, `scoring_net=="right"` is good) |
+| `--left_team`       | —                     | Same as omitting flags — explicit LEFT team (**+x** primary)                                       |
+| `--right_team`      | —                     | **RIGHT** team (−x primary; `scoring_net=="left"` is good)                                         |
 
 `GameState.controlled_scores_into_right_net` mirrors that: **`True`** = controlled slots are LEFT team (score **right**).
 
@@ -105,17 +105,17 @@ Resume with the **same** team mode as when the checkpoint was trained (default /
 
 Geometry is fixed: **LEFT_TEAM** agents (blue) vs **RIGHT_TEAM** (green) vs solo **PLAYER** (red).
 
-| Flag | Default | Description |
-|------|---------|---------------|
-| `--model` | `./models/best_model/best_model` | Fallback LEFT checkpoint (**without** `.zip`) if `--model_left` omitted |
-| `--model_left`, `--model-left` | *(use `--model`)* | PPO checkpoint for LEFT_TEAM (**+x** net; typical default training layout) |
-| `--model_right`, `--model-right` | *(none)* | PPO checkpoint for RIGHT_TEAM (**−x** net; `--right_team` training). Omit for heuristic greens, unless `--opposing_team_policy` |
-| `--opposing_team_policy` | off | RIGHT_TEAM uses **mirrored** +x policy (see `--opposing_team_model`); **ignored** if `--model_right` is set |
-| `--opposing_team_model` | *(none)* | Mirrored-policy checkpoint (defaults to LEFT checkpoint) |
-| `--episodes` | `3` | Episodes before exit |
-| `--fps` | `60` | Pygame FPS cap |
-| `--frame_skip` | `4` | Must match training `frame_skip` |
-| `--dt` | `1/60` | Simulation timestep (seconds) |
+| Flag                             | Default                          | Description                                                                                                                     |
+| -------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--model`                        | `./models/best_model/best_model` | Fallback LEFT checkpoint (**without** `.zip`) if `--model_left` omitted                                                         |
+| `--model_left`, `--model-left`   | _(use `--model`)_                | PPO checkpoint for LEFT_TEAM (**+x** net; typical default training layout)                                                      |
+| `--model_right`, `--model-right` | _(none)_                         | PPO checkpoint for RIGHT_TEAM (**−x** net; `--right_team` training). Omit for heuristic greens, unless `--opposing_team_policy` |
+| `--opposing_team_policy`         | off                              | RIGHT_TEAM uses **mirrored** +x policy (see `--opposing_team_model`); **ignored** if `--model_right` is set                     |
+| `--opposing_team_model`          | _(none)_                         | Mirrored-policy checkpoint (defaults to LEFT checkpoint)                                                                        |
+| `--episodes`                     | `3`                              | Episodes before exit                                                                                                            |
+| `--fps`                          | `60`                             | Pygame FPS cap                                                                                                                  |
+| `--frame_skip`                   | `4`                              | Must match training `frame_skip`                                                                                                |
+| `--dt`                           | `1/60`                           | Simulation timestep (seconds)                                                                                                   |
 
 Examples:
 
@@ -129,10 +129,10 @@ python train/watch.py --opposing_team_policy --opposing_team_model ./models/othe
 
 ### `python headless.py`
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--steps` | `120` | Number of fixed-`dt` steps (idle actions) |
-| `--dt` | `1/60` | Seconds per step |
+| Flag      | Default | Description                               |
+| --------- | ------- | ----------------------------------------- |
+| `--steps` | `120`   | Number of fixed-`dt` steps (idle actions) |
+| `--dt`    | `1/60`  | Seconds per step                          |
 
 Examples:
 

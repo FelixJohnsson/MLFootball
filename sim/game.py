@@ -420,9 +420,11 @@ class GameState:
         lt1, lt2 = self.left_team_player1, self.left_team_player2
         rt1, rt2 = self.right_team_player1, self.right_team_player2
 
-        for _ in range(6):
+        for _ in range(2):
+            moved = False
             for pl in (lt1, lt2, rt1, rt2):
-                resolve_ball_player(self.ball, pl)
+                if resolve_ball_player(self.ball, pl):
+                    moved = True
             if opp is not None:
                 resolve_ball_player(self.ball, opp)
                 for pl in (lt1, lt2, rt1, rt2):
@@ -436,9 +438,13 @@ class GameState:
                 (rt1, rt2),
             )
             for a, b in pairs:
-                resolve_player_player(a, b)
+                if resolve_player_player(a, b):
+                    moved = True
 
             self.ball.reapply_pitch_collisions(REAPPLY_PITCH_PER_PHYS_ITERATION)
+
+            if not moved:
+                break
 
         self.ball.reapply_pitch_collisions(REAPPLY_PITCH_AFTER_PHYS_LOOP)
         self.ball._cap_speed()

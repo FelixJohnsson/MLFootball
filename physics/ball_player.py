@@ -12,27 +12,29 @@ BALL_PLAYER_RESTITUTION = 0.48
 BALL_PLAYER_TOUCH_EXTRA = 0.5
 
 
-def resolve_ball_player(ball: Ball, player) -> None:
-    """Separation overlap + impulse only while centres are inside the touch band."""
+def resolve_ball_player(ball: Ball, player) -> bool:
     mb = BALL_PHYSICAL_MASS
     mp = PLAYER_PHYSICAL_MASS
     pr = float(player.radius)
     min_dist = ball.r + pr
     touch_limit = min_dist + BALL_PLAYER_TOUCH_EXTRA
+    touch_limit_sq = touch_limit * touch_limit
 
     px, py = float(player.x), float(player.y)
     pvx, pvy = float(player.vx), float(player.vy)
 
     dx = ball.x - px
     dy = ball.y - py
-    dist = math.hypot(dx, dy)
+    dist_sq = dx * dx + dy * dy
 
-    if dist > touch_limit:
-        return
+    if dist_sq > touch_limit_sq:
+        return False
 
-    if dist < 1e-6:
+    if dist_sq < 1e-12:
         dx, dy = 1.0, 0.0
         dist = 1.0
+    else:
+        dist = math.sqrt(dist_sq)
 
     nx = dx / dist
     ny = dy / dist
@@ -49,11 +51,12 @@ def resolve_ball_player(ball: Ball, player) -> None:
 
     dx = ball.x - player.x
     dy = ball.y - player.y
-    dist_touch = math.hypot(dx, dy)
-    if dist_touch > touch_limit or dist_touch < 1e-6:
+    dist_sq = dx * dx + dy * dy
+    if dist_sq > touch_limit_sq or dist_sq < 1e-12:
         player._clamp_to_pitch()
-        return
+        return True
 
+    dist_touch = math.sqrt(dist_sq)
     nx = dx / dist_touch
     ny = dy / dist_touch
 
@@ -69,3 +72,4 @@ def resolve_ball_player(ball: Ball, player) -> None:
         player.vy -= (impulse / mp) * ny
 
     player._clamp_to_pitch()
+    return True
