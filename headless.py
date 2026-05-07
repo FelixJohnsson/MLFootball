@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 
-from sim.actions import TickActions, idle_actions
+from sim.actions import idle_actions
 from sim.game import GameState
 
 
@@ -19,7 +19,7 @@ def main() -> None:
     args = p.parse_args()
 
     state = GameState.new()
-    actions: TickActions = idle_actions()
+    actions = idle_actions()
 
     print("step\tticks\tscore(L,R)\tterm\ttrunc\tball_x\tball_y")
     for i in range(args.steps):

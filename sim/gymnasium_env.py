@@ -1,4 +1,4 @@
-"""RL training helpers: team sim + vec wrapper (25-D ego, 3-D act per policy call)."""
+"""RL training helpers: team sim + vec wrapper (27-D ego, 3-D act per policy call)."""
 
 from __future__ import annotations
 

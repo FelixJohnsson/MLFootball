@@ -16,8 +16,9 @@ import numpy as np
 
 from sim.constants import OBS_DIM
 
-# 25-D obs (see ``build_observation``): negate ego x,vx; ball rel_x, vx;
+# 27-D obs (see ``build_observation``): negate ego x,vx; ball rel_x, vx;
 # goal-vector x; teammate + each opposing-team slot (Δx/FIELD_W and vx/max).
+# Last two dims (match score / ``MATCH_WIN_GOALS``) are not mirrored — world tallies are shared.
 OBS_X_MIRROR_DIMS: tuple[int, ...] = (
     0,
     2,  # player x/W, vx
@@ -44,11 +45,6 @@ def mirror_observation_for_right_trained_policy(obs: np.ndarray) -> np.ndarray:
     return out
 
 
-def unmirror_observation_from_right_trained_policy(obs: np.ndarray) -> np.ndarray:
-    """Inverse of ``mirror_observation_for_right_trained_policy`` (same transform)."""
-    return mirror_observation_for_right_trained_policy(obs)
-
-
 # Action slice [move_x, move_y, kick]: horizontal stick only mirrored.
 OBS_ACTION_MIRROR_AXES: tuple[int, ...] = (0,)
 
@@ -61,16 +57,9 @@ def mirror_action_for_right_trained_policy(action: np.ndarray) -> np.ndarray:
     return a
 
 
-def unmirror_action_for_right_trained_policy(action: np.ndarray) -> np.ndarray:
-    """Inverse of ``mirror_action_for_right_trained_policy`` (same transform)."""
-    return mirror_action_for_right_trained_policy(action)
-
-
 __all__ = [
     "OBS_ACTION_MIRROR_AXES",
     "OBS_X_MIRROR_DIMS",
     "mirror_action_for_right_trained_policy",
     "mirror_observation_for_right_trained_policy",
-    "unmirror_action_for_right_trained_policy",
-    "unmirror_observation_from_right_trained_policy",
 ]

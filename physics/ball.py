@@ -60,15 +60,6 @@ class Ball:
         self.x += self.vx * dt
         self.y += self.vy * dt
 
-    def kick_toward(self, tx: float, ty: float, impulse: float = 520.0) -> None:
-        dx, dy = tx - self.x, ty - self.y
-        d = math.hypot(dx, dy)
-        if d < 1e-3:
-            return
-        self.vx += impulse * dx / d
-        self.vy += impulse * dy / d
-        self._cap_speed()
-
     def kick_radial_from(self, ox: float, oy: float, impulse: float = 560.0) -> None:
         dx, dy = self.x - ox, self.y - oy
         d = math.hypot(dx, dy)

@@ -22,6 +22,4 @@ def resolve_player_player(a, b) -> bool:
     a.y -= ny * half
     b.x += nx * half
     b.y += ny * half
-    a._clamp_to_pitch()
-    b._clamp_to_pitch()
     return True

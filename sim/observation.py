@@ -9,7 +9,7 @@ import numpy as np
 from field import FIELD_DIAG, FIELD_H, FIELD_W, attack_target_goal_xy
 from player import PLAYER_MAX_SPEED, Player
 
-from sim.constants import KICK_COOLDOWN_TICKS
+from sim.constants import KICK_COOLDOWN_TICKS, MATCH_WIN_GOALS
 
 
 def _four_relative_to_ego(ego: Player, other: Player | None) -> tuple[float, float, float, float]:
@@ -29,6 +29,7 @@ def build_observation(
     ball,
     tick_count: int,
     kick_cool_expire_at: int,
+    score: tuple[int, int],
     teammate_player: Player | None = None,
     opposing_team_other_slot1_player: Player | None = None,
     opposing_team_other_slot2_player: Player | None = None,
@@ -37,6 +38,8 @@ def build_observation(
     """
     First 13 dims: ego kinematics + ball-relative + mouth vector + cooldown.
     Then teammate + two opposing-team anchors (relative kinematics × 4 each). Zeros when missing.
+    Last 2 dims: ``score[0] / MATCH_WIN_GOALS``, ``score[1] / MATCH_WIN_GOALS`` (``GameState.score``:
+    left-net tally, right-net tally — see README).
 
     Default ``attack_goal_xy`` (+x mouth) matches LEFT_TEAM training; callers pass −x mouth for RIGHT_TEAM.
     """
@@ -69,9 +72,13 @@ def build_observation(
         d_bg,
         kd,
     )
+    g = float(MATCH_WIN_GOALS)
+    s0, s1 = float(score[0]) / g, float(score[1]) / g
     tail = (
         *_four_relative_to_ego(ego_player, teammate_player),
         *_four_relative_to_ego(ego_player, opposing_team_other_slot1_player),
         *_four_relative_to_ego(ego_player, opposing_team_other_slot2_player),
+        s0,
+        s1,
     )
     return np.asarray(head + tail, dtype=np.float64)

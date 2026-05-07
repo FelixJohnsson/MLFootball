@@ -14,7 +14,6 @@ from .colors import (
     GOAL_LINE_W,
     GOAL_NET,
     GOAL_POST,
-    LINE,
 )
 
 

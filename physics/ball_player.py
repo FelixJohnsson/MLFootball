@@ -53,7 +53,6 @@ def resolve_ball_player(ball: Ball, player) -> bool:
     dy = ball.y - player.y
     dist_sq = dx * dx + dy * dy
     if dist_sq > touch_limit_sq or dist_sq < 1e-12:
-        player._clamp_to_pitch()
         return True
 
     dist_touch = math.sqrt(dist_sq)
@@ -71,5 +70,4 @@ def resolve_ball_player(ball: Ball, player) -> bool:
         player.vx -= (impulse / mp) * nx
         player.vy -= (impulse / mp) * ny
 
-    player._clamp_to_pitch()
     return True

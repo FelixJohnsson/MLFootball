@@ -7,7 +7,7 @@ import random
 
 import numpy as np
 
-from field import FIELD_DIAG, attack_target_goal_xy, left_attack_target_goal_xy
+from field import FIELD_DIAG, FIELD_H, FIELD_W, attack_target_goal_xy, left_attack_target_goal_xy
 
 from sim.actions import TickActions
 from sim.constants import DEFAULT_MAX_TICKS, TEAM_ATTACKER_ACT_DIM
@@ -18,6 +18,13 @@ from sim.frozen_opposing_team_policy import (
 )
 from sim.game import GameState
 from sim.types import StepInfo
+
+INCLUDE_BALL_TOWARDS_GOAL_REWARD = True
+
+
+def _off_pitch_excess(px: float, py: float) -> float:
+    """How far ``(px,py)`` sits outside the pitch rectangle (max overfow per axis)."""
+    return max(0.0, -px, px - FIELD_W, -py, py - FIELD_H)
 
 
 class AttackerTeamRlEnv:
@@ -96,6 +103,22 @@ class AttackerTeamRlEnv:
         )
         return np.clip(raw, -1.0, 1.0).astype(np.float32)
 
+    def _get_opposing_actions(self) -> tuple[TickActions, TickActions] | None:
+        """Return tick actions for the opposing team, or None for heuristic chase.
+
+        Override in subclasses to provide custom opponent behaviour (e.g. a
+        natively-trained frozen model).
+        """
+        ref = self.opposing_team_policy_ref
+        m = ref.model if ref is not None else None
+        if m is None:
+            return None
+        return opposing_team_tick_actions_shared_policy(
+            self.state,
+            shared_policy_model=m,
+            deterministic=self.opposing_team_policy_deterministic,
+        )
+
     def step_team(self, action: np.ndarray) -> tuple[float, bool, bool, dict]:
         a = np.asarray(action, dtype=np.float32).reshape(TEAM_ATTACKER_ACT_DIM)
         clipped = np.clip(a, -1.0, 1.0).astype(np.float32)
@@ -117,20 +140,14 @@ class AttackerTeamRlEnv:
         (target_x, target_y), (opp_net_x, opp_net_y) = self._scoring_target_and_opposite_net_xy()
 
         for _ in range(self.frame_skip):
-            ref = self.opposing_team_policy_ref
-            m = ref.model if ref is not None else None
-            if m is not None:
-                o1_tick, o2_tick = opposing_team_tick_actions_shared_policy(
-                    self.state,
-                    shared_policy_model=m,
-                    deterministic=self.opposing_team_policy_deterministic,
-                )
+            opp = self._get_opposing_actions()
+            if opp is not None:
                 last_si = self.state.step(
                     tick_p1,
                     self.dt,
                     controlled_player2_actions=tick_p2,
-                    opposing_team_player1_actions=o1_tick,
-                    opposing_team_player2_actions=o2_tick,
+                    opposing_team_player1_actions=opp[0],
+                    opposing_team_player2_actions=opp[1],
                 )
             else:
                 last_si = self.state.step(
@@ -138,30 +155,51 @@ class AttackerTeamRlEnv:
                 )
             cp1, cp2 = self.state.controlled_team_players()
             b = self.state.ball
+            # Keep _prev_* aligned every tick whether dense shaping runs or not.
             curr_ball_target = math.hypot(b.x - target_x, b.y - target_y)
             curr_ball_opposite_net = math.hypot(b.x - opp_net_x, b.y - opp_net_y)
             curr_c1_ball = math.hypot(cp1.x - b.x, cp1.y - b.y)
             curr_c2_ball = math.hypot(cp2.x - b.x, cp2.y - b.y)
-            total_reward += (
-                self.reward_weights.ball_to_scoring_target_coef
-                * (self._prev_ball_scoring_target_dist - curr_ball_target)
-                / FIELD_DIAG
-            )
-            total_reward -= (
-                self.reward_weights.ball_opposite_net_penalty_coef
-                * (self._prev_ball_opposite_net_dist - curr_ball_opposite_net)
-                / FIELD_DIAG
-            )
-            total_reward += (
-                self.reward_weights.ctrl_primary_to_ball_coef
-                * (self._prev_ctrl_p1_ball_dist - curr_c1_ball)
-                / FIELD_DIAG
-            )
-            total_reward += (
-                self.reward_weights.ctrl_partner_to_ball_coef
-                * (self._prev_ctrl_p2_ball_dist - curr_c2_ball)
-                / FIELD_DIAG
-            )
+
+            rw = self.reward_weights
+            if rw.teammate_spread_penalty_coef > 0 and rw.teammate_spread_threshold_px > 1e-9:
+                teammate_dist = math.hypot(cp1.x - cp2.x, cp1.y - cp2.y)
+                st = rw.teammate_spread_threshold_px
+                if teammate_dist < st:
+                    total_reward -= rw.teammate_spread_penalty_coef * (1.0 - teammate_dist / st)
+
+            if rw.off_pitch_penalty_coef > 0:
+                off = _off_pitch_excess(cp1.x, cp1.y) + _off_pitch_excess(cp2.x, cp2.y)
+                total_reward -= rw.off_pitch_penalty_coef * off / FIELD_DIAG
+
+            if INCLUDE_BALL_TOWARDS_GOAL_REWARD:
+                total_reward += (
+                    rw.ball_to_scoring_target_coef
+                    * (self._prev_ball_scoring_target_dist - curr_ball_target)
+                    / FIELD_DIAG
+                )
+                total_reward -= (
+                    rw.ball_opposite_net_penalty_coef
+                    * (self._prev_ball_opposite_net_dist - curr_ball_opposite_net)
+                    / FIELD_DIAG
+                )
+                if rw.chase_nearest_to_ball_coef != 0:
+                    if curr_c1_ball <= curr_c2_ball:
+                        chase_delta = self._prev_ctrl_p1_ball_dist - curr_c1_ball
+                    else:
+                        chase_delta = self._prev_ctrl_p2_ball_dist - curr_c2_ball
+                    total_reward += rw.chase_nearest_to_ball_coef * chase_delta / FIELD_DIAG
+                if rw.partner_support_ball_potential_coef != 0:
+                    ideal = rw.partner_support_ideal_ball_dist_px
+                    if curr_c1_ball <= curr_c2_ball:
+                        prev_e = abs(self._prev_ctrl_p2_ball_dist - ideal)
+                        curr_e = abs(curr_c2_ball - ideal)
+                    else:
+                        prev_e = abs(self._prev_ctrl_p1_ball_dist - ideal)
+                        curr_e = abs(curr_c1_ball - ideal)
+                    total_reward += (
+                        rw.partner_support_ball_potential_coef * (prev_e - curr_e) / FIELD_DIAG
+                    )
             if self.state.controlled_scores_into_right_net:
                 if last_si.scoring_net == "right":
                     total_reward += self.reward_weights.goal_correct_net_bonus
@@ -184,6 +222,16 @@ class AttackerTeamRlEnv:
 
         assert last_si is not None
 
+        rw = self.reward_weights
+        s0, s1 = self.state.score
+        if self.state.controlled_scores_into_right_net:
+            our_goals, opp_goals = s1, s0
+        else:
+            our_goals, opp_goals = s0, s1
+        behind_by = opp_goals - our_goals
+        if behind_by > 0 and rw.losing_per_goal_behind_coef > 0.0:
+            total_reward -= rw.losing_per_goal_behind_coef * behind_by
+
         total_reward -= self.reward_weights.step_penalty_per_env_step
 
         bspd = self.state.ball.speed()
@@ -191,8 +239,24 @@ class AttackerTeamRlEnv:
             self._ball_stagnant_counter += 1
         else:
             self._ball_stagnant_counter = 0
+
+        _b = self.state.ball
+        _p1, _p2 = self.state.controlled_team_players()
+        _d1 = math.hypot(_p1.x - _b.x, _p1.y - _b.y)
+        _d2 = math.hypot(_p2.x - _b.x, _p2.y - _b.y)
+        _touch = self.reward_weights.stagnant_crowding_ball_touch_px
+        _crowded_stall = (
+            bspd < self.stagnant_ball_speed_eps
+            and _d1 <= _touch
+            and _d2 <= _touch
+        )
+        if _crowded_stall and self.reward_weights.stagnant_crowding_tick_penalty != 0:
+            total_reward += self.reward_weights.stagnant_crowding_tick_penalty
+
         if self._ball_stagnant_counter >= self.stagnant_ball_env_steps:
             stagnant_penalty = self.stagnant_ball_penalty * self._ball_stagnant_counter
+            if _crowded_stall:
+                stagnant_penalty *= self.reward_weights.stagnant_crowding_stall_multiplier
             stagnant_penalty = max(stagnant_penalty, -1)
             total_reward += stagnant_penalty
 

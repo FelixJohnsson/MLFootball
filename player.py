@@ -37,24 +37,23 @@ PLAYER_NEAR_STOP_SPEED = 2.5  # post-drag cutoff; velocities zeroed below this
 # -----------------------------------------------------------------------------
 # Heuristic chase for frozen team (when no policy): scale × PLAYER_MAX_SPEED
 # -----------------------------------------------------------------------------
-HEURISTIC_FROZEN_TEAM_CHASE_SCALE = 0
-
+HEURISTIC_FROZEN_TEAM_CHASE_SCALE = 0.85
 # -----------------------------------------------------------------------------
 # Roster shooting into the +x goal (often drawn as the ``left'' team — starts −x half).
 # -----------------------------------------------------------------------------
-ATTACK_RIGHT_GOAL_TEAM1_SPAWN_X_FRACS = (0.10, 0.40)
-ATTACK_RIGHT_GOAL_TEAM2_SPAWN_X_FRACS = (0.10, 0.40)
-ATTACK_RIGHT_GOAL_SPAWN_Y_JITTER = (-400.0, 400.0)
+ATTACK_RIGHT_GOAL_TEAM1_SPAWN_X_FRACS = (0.20, 0.45)
+ATTACK_RIGHT_GOAL_TEAM2_SPAWN_X_FRACS = (0.20, 0.45)
+ATTACK_RIGHT_GOAL_SPAWN_Y_JITTER = (-300.0, 300.0)
 ATTACK_RIGHT_GOAL_PAIR_CENTER_DIST_PAD = 4.0
 ATTACK_RIGHT_GOAL_PAIR_PLACE_TRIES = 80
-ATTACK_RIGHT_GOAL_FALLBACK_X_FRAC = 200  # fallback: spread horizontally along this band
+ATTACK_RIGHT_GOAL_FALLBACK_X_FRAC = 10  # fallback: spread horizontally along this band
 
 # -----------------------------------------------------------------------------
 # Roster shooting into the −x goal (often drawn as the ``right'' team — starts +x half).
 # -----------------------------------------------------------------------------
-ATTACK_LEFT_GOAL_TEAM1_SPAWN_X_FRACS = (0.50, 0.75)
-ATTACK_LEFT_GOAL_TEAM2_SPAWN_X_FRACS = (0.50, 0.75)
-ATTACK_LEFT_GOAL_SPAWN_Y_JITTER = (-200.0, 200.0)
+ATTACK_LEFT_GOAL_TEAM1_SPAWN_X_FRACS = (0.55, 0.80)
+ATTACK_LEFT_GOAL_TEAM2_SPAWN_X_FRACS = (0.55, 0.80)
+ATTACK_LEFT_GOAL_SPAWN_Y_JITTER = (-300, 300.0)
 ATTACK_LEFT_GOAL_PAIR_CENTER_DIST_PAD = 4.0
 ATTACK_LEFT_GOAL_PAIR_PLACE_TRIES = 80
 ATTACK_LEFT_GOAL_FALLBACK_X_FRAC = 0.51  # fallback: spread horizontally along this band
@@ -63,11 +62,11 @@ ATTACK_LEFT_GOAL_FALLBACK_X_FRAC = 0.51  # fallback: spread horizontally along t
 # Spawn: opponent (fractions of FIELD_W; Y offset from midfield)
 # -----------------------------------------------------------------------------
 
-OPPONENT_RESET_X_FRACS = (0.40, 0.41)
-OPPONENT_RESET_Y_JITTER = (0,1)
+OPPONENT_RESET_X_FRACS = (0.5, 0.5)
+OPPONENT_RESET_Y_JITTER = (-200, -200)
 
-OPPONENT_FACTORY_SEED_X_FRAC = 0.40  # replaced immediately by reset_opponent_to_start()
-OPPONENT_FACTORY_Y_JITTER = (0.0, 1.0)
+OPPONENT_FACTORY_SEED_X_FRAC = 0.5  # replaced immediately by reset_opponent_to_start()
+OPPONENT_FACTORY_Y_JITTER = (-200, -200)
 
 
 @dataclass
@@ -140,14 +139,6 @@ class Player:
 
         self.x += self.vx * dt
         self.y += self.vy * dt
-        self._clamp_to_pitch()
-
-    def reset_to_start(self) -> None:
-        """Solo spawn for a player attacking the +x net (paired resets use ``place_attack_right_goal_team_no_overlap``)."""
-        self.x = FIELD_W * random.uniform(*ATTACK_RIGHT_GOAL_TEAM1_SPAWN_X_FRACS)
-        self.y = (FIELD_H / 2) + random.uniform(*ATTACK_RIGHT_GOAL_SPAWN_Y_JITTER)
-        self.vx = self.vy = 0.0
-        self._clamp_to_pitch()
 
     def reset_opponent_to_start(self) -> None:
         """Spawn near the left goal (mirror of RL agent kicking toward right)."""
@@ -170,7 +161,6 @@ class Player:
         self.vy = uy * spd
         self.x += self.vx * dt
         self.y += self.vy * dt
-        self._clamp_to_pitch()
 
     def distance_to_ball(self, ball: Ball) -> float:
         return math.hypot(ball.x - self.x, ball.y - self.y)

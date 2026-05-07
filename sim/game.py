@@ -32,6 +32,7 @@ from sim.constants import (
     KICK_FLASH_TICKS,
     KICK_IMPULSE,
     FROZEN_TEAM_HEURISTIC_CHASE,
+    MATCH_WIN_GOALS,
 )
 from sim.observation import build_observation
 from sim.policy_mirror import mirror_observation_for_right_trained_policy
@@ -155,6 +156,7 @@ class GameState:
                 if self.controlled_scores_into_right_net
                 else self.right_team_p1_kick_cool_expire_at
             ),
+            score=self.score,
             teammate_player=cp2,
             opposing_team_other_slot1_player=ot1,
             opposing_team_other_slot2_player=ot2,
@@ -173,6 +175,7 @@ class GameState:
                 if self.controlled_scores_into_right_net
                 else self.right_team_p2_kick_cool_expire_at
             ),
+            score=self.score,
             teammate_player=cp1,
             opposing_team_other_slot1_player=ot1,
             opposing_team_other_slot2_player=ot2,
@@ -180,7 +183,7 @@ class GameState:
         )
 
     def get_obs_left_team_primary(self) -> np.ndarray:
-        """25-D ego for ``left_team_player1`` (+x scoring), partner L2 vs RIGHT_TEAM."""
+        """27-D ego for ``left_team_player1`` (+x scoring), partner L2 vs RIGHT_TEAM."""
         lt1, lt2 = self.left_team_player1, self.left_team_player2
         rt1, rt2 = self.right_team_player1, self.right_team_player2
         return build_observation(
@@ -188,6 +191,7 @@ class GameState:
             ball=self.ball,
             tick_count=self.tick_count,
             kick_cool_expire_at=self.left_team_p1_kick_cool_expire_at,
+            score=self.score,
             teammate_player=lt2,
             opposing_team_other_slot1_player=rt1,
             opposing_team_other_slot2_player=rt2,
@@ -195,7 +199,7 @@ class GameState:
         )
 
     def get_obs_left_team_partner(self) -> np.ndarray:
-        """25-D ego for ``left_team_player2`` (+x scoring), partner L1."""
+        """27-D ego for ``left_team_player2`` (+x scoring), partner L1."""
         lt1, lt2 = self.left_team_player1, self.left_team_player2
         rt1, rt2 = self.right_team_player1, self.right_team_player2
         return build_observation(
@@ -203,6 +207,7 @@ class GameState:
             ball=self.ball,
             tick_count=self.tick_count,
             kick_cool_expire_at=self.left_team_p2_kick_cool_expire_at,
+            score=self.score,
             teammate_player=lt1,
             opposing_team_other_slot1_player=rt1,
             opposing_team_other_slot2_player=rt2,
@@ -210,7 +215,7 @@ class GameState:
         )
 
     def get_obs_right_team_primary(self) -> np.ndarray:
-        """25-D ego for ``right_team_player1`` (−x scoring), partner R2 vs LEFT_TEAM."""
+        """27-D ego for ``right_team_player1`` (−x scoring), partner R2 vs LEFT_TEAM."""
         lt1, lt2 = self.left_team_player1, self.left_team_player2
         rt1, rt2 = self.right_team_player1, self.right_team_player2
         return build_observation(
@@ -218,6 +223,7 @@ class GameState:
             ball=self.ball,
             tick_count=self.tick_count,
             kick_cool_expire_at=self.right_team_p1_kick_cool_expire_at,
+            score=self.score,
             teammate_player=rt2,
             opposing_team_other_slot1_player=lt1,
             opposing_team_other_slot2_player=lt2,
@@ -225,7 +231,7 @@ class GameState:
         )
 
     def get_obs_right_team_partner(self) -> np.ndarray:
-        """25-D ego for ``right_team_player2`` (−x scoring), partner R1 vs LEFT_TEAM."""
+        """27-D ego for ``right_team_player2`` (−x scoring), partner R1 vs LEFT_TEAM."""
         lt1, lt2 = self.left_team_player1, self.left_team_player2
         rt1, rt2 = self.right_team_player1, self.right_team_player2
         return build_observation(
@@ -233,6 +239,7 @@ class GameState:
             ball=self.ball,
             tick_count=self.tick_count,
             kick_cool_expire_at=self.right_team_p2_kick_cool_expire_at,
+            score=self.score,
             teammate_player=rt1,
             opposing_team_other_slot1_player=lt1,
             opposing_team_other_slot2_player=lt2,
@@ -253,6 +260,7 @@ class GameState:
                 if self.controlled_scores_into_right_net
                 else self.left_team_p1_kick_cool_expire_at
             ),
+            score=self.score,
             teammate_player=ot2,
             opposing_team_other_slot1_player=cp1,
             opposing_team_other_slot2_player=cp2,
@@ -267,6 +275,7 @@ class GameState:
                 if self.controlled_scores_into_right_net
                 else self.left_team_p2_kick_cool_expire_at
             ),
+            score=self.score,
             teammate_player=ot1,
             opposing_team_other_slot1_player=cp1,
             opposing_team_other_slot2_player=cp2,
@@ -286,21 +295,26 @@ class GameState:
         controlled_player2_actions: TickActions | None = None,
         opposing_team_player1_actions: TickActions | None = None,
         opposing_team_player2_actions: TickActions | None = None,
+        controlled_team_heuristic_chase: bool = False,
     ) -> StepInfo:
         self.tick_count += 1
 
         cp1, cp2 = self.controlled_team_players()
         op1, op2 = self.opposing_team_players()
 
-        cp1.apply_movement(float(controlled_player1_actions.move_x), float(controlled_player1_actions.move_y), dt)
-        if controlled_player2_actions is not None:
-            cp2.apply_movement(
-                float(controlled_player2_actions.move_x),
-                float(controlled_player2_actions.move_y),
-                dt,
-            )
+        if controlled_team_heuristic_chase and FROZEN_TEAM_HEURISTIC_CHASE:
+            cp1.apply_chase_toward_ball(self.ball, HEURISTIC_FROZEN_TEAM_CHASE_SCALE, dt)
+            cp2.apply_chase_toward_ball(self.ball, HEURISTIC_FROZEN_TEAM_CHASE_SCALE, dt)
         else:
-            cp2.apply_movement(0.0, 0.0, dt)
+            cp1.apply_movement(float(controlled_player1_actions.move_x), float(controlled_player1_actions.move_y), dt)
+            if controlled_player2_actions is not None:
+                cp2.apply_movement(
+                    float(controlled_player2_actions.move_x),
+                    float(controlled_player2_actions.move_y),
+                    dt,
+                )
+            else:
+                cp2.apply_movement(0.0, 0.0, dt)
 
         opp = self.opponent
         if opp is not None and human_actions is not None:
@@ -451,17 +465,22 @@ class GameState:
 
         terminated = False
         net = self.ball.which_goal_scored()
+        # Intermediate goals reposition the ball/rosters but only end the episode at MATCH_WIN_GOALS.
         if net == "left":
             lg, rg = self.score
             self.score = (lg + 1, rg)
             self._restart_after_goal()
-            terminated = True
+            terminated = (
+                self.score[0] >= MATCH_WIN_GOALS or self.score[1] >= MATCH_WIN_GOALS
+            )
         elif net == "right":
             lg, rg = self.score
             self.score = (lg, rg + 1)
             self._restart_after_goal()
-            terminated = True
+            terminated = (
+                self.score[0] >= MATCH_WIN_GOALS or self.score[1] >= MATCH_WIN_GOALS
+            )
 
         truncated = (not terminated) and self.tick_count >= self.max_ticks
-        scoring = net if terminated else None
+        scoring = net
         return StepInfo(terminated=terminated, truncated=truncated, scoring_net=scoring)

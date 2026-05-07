@@ -1,6 +1,6 @@
 """Standard Gymnasium wrapper around AttackerTeamRlEnv for single-ego training.
 
-Exposes the primary ego's 25-D observation and 3-D action (move_x, move_y,
+Exposes the primary ego's 27-D observation and 3-D action (move_x, move_y,
 kick_power) through the standard ``reset()`` / ``step()`` API so that
 SB3's ``SubprocVecEnv`` can run each match in its own process.
 

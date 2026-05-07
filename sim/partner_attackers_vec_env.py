@@ -1,4 +1,4 @@
-"""VecEnv: one or two RL ego rows per ``AttackerTeamRlEnv`` (25-D obs, 3-D act per ego).
+"""VecEnv: one or two RL ego rows per ``AttackerTeamRlEnv`` (27-D obs, 3-D act per ego).
 
 LEFT controlled team ↔ +x scoring; RIGHT ↔ −x (`controlled_scores_into_right_net` on ``GameState``).
 """

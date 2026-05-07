@@ -3,6 +3,7 @@ from sim.constants import (
     DEFAULT_MAX_TICKS,
     KICK_COOLDOWN_TICKS,
     KICK_IMPULSE,
+    MATCH_WIN_GOALS,
     OBS_DIM,
     TEAM_ATTACKER_ACT_DIM,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "DEFAULT_MAX_TICKS",
     "KICK_COOLDOWN_TICKS",
     "KICK_IMPULSE",
+    "MATCH_WIN_GOALS",
     "MLFootballEnv",
     "OBS_DIM",
     "TeamRlRewardWeights",

@@ -1,6 +1,7 @@
 """PPO on **one** controlled ego per match (primary slot); teammate idle.
 
-Hyperparameters, reward shaping, and logging paths live in ``train/single_training_constants.py``.
+Hyperparameters and logging paths live in ``train/single_training_constants.py``.
+Reward shaping uses ``sim.reward_weights.DEFAULT_TEAM_RL_REWARD_WEIGHTS`` (edit ``sim/reward_weights.py``).
 For shared-weights **dual** training use ``train/train_ppo.py``.
 
 Usage
@@ -8,11 +9,13 @@ Usage
     python train/train_ppo_single.py --steps 500000
     python train/train_ppo_single.py --right_team --n_envs 8
     python train/train_ppo_single.py --save_tag run1 --resume models/ppo_football_1ego_run1_final
+    python train/train_ppo_single.py ... --save_tag myrun --watch      # open pygame demo after save
 """
 
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,6 +39,7 @@ from stable_baselines3.common.callbacks import (
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecMonitor
 
 from sim.single_ego_gym_env import SingleEgoGymEnv
+from sim.reward_weights import DEFAULT_TEAM_RL_REWARD_WEIGHTS
 
 
 def _env_kwargs(controlled_scores_into_right_net: bool, frame_skip: int) -> dict:
@@ -48,7 +52,7 @@ def _env_kwargs(controlled_scores_into_right_net: bool, frame_skip: int) -> dict
         stagnant_ball_penalty=stc.STAGNANT_BALL_PENALTY,
         stagnant_ball_speed_eps=stc.STAGNANT_BALL_SPEED_EPS,
         controlled_scores_into_right_net=controlled_scores_into_right_net,
-        reward_weights=stc.SINGLE_REWARD_WEIGHTS,
+        reward_weights=DEFAULT_TEAM_RL_REWARD_WEIGHTS,
     )
 
 
@@ -59,6 +63,51 @@ def _make_env(seed: int, env_kwargs: dict):
         env.reset(seed=seed)
         return env
     return _init
+
+
+def _watch_command_line(
+    *,
+    final_zip_stem: Path,
+    controlled_scores_into_right_net: bool,
+    frame_skip: int,
+    episodes: int,
+) -> list[str]:
+    """Argv for ``train/watch.py``: matches single-ego convention (heuristic other roster)."""
+    wpy = _TRAIN_DIR / "watch.py"
+    line = [sys.executable, str(wpy)]
+    if controlled_scores_into_right_net:
+        # Trained LEFT_TEAM (+x): drive greens with heuristic unless user changes watch flags.
+        line += [
+            "--model_left",
+            str(final_zip_stem),
+            "--episodes",
+            str(episodes),
+            "--frame_skip",
+            str(frame_skip),
+        ]
+    else:
+        # Trained RIGHT_TEAM (−x): native-right checkpoint + heuristic blues (same as typical post-train watch).
+        line += [
+            "--model_right",
+            str(final_zip_stem),
+            "--left_team_heuristic",
+            "--episodes",
+            str(episodes),
+            "--frame_skip",
+            str(frame_skip),
+        ]
+    return line
+
+
+def _format_shell_command(argv: list[str]) -> str:
+    """Best-effort single line for copy-paste (Windows-friendly)."""
+    parts: list[str] = []
+    for a in argv:
+        if any(c in a for c in ' \t"&|<>^'):
+            parts.append('"' + a.replace('"', '\\"') + '"')
+        else:
+            parts.append(a)
+    return " ".join(parts)
 
 
 def parse_args() -> argparse.Namespace:
@@ -103,6 +152,18 @@ def parse_args() -> argparse.Namespace:
         help="Train RIGHT_TEAM (−x net primary). Mirrored opposing policy disabled.",
     )
     p.set_defaults(controlled_scores_into_right_net=True)
+    p.add_argument(
+        "--watch",
+        action="store_true",
+        help="After training finishes, open train/watch.py with the right --model_* flags for this run.",
+    )
+    p.add_argument(
+        "--watch_episodes",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Episodes in the printed watch command and when launching --watch",
+    )
     return p.parse_args()
 
 
@@ -116,7 +177,7 @@ def main() -> None:
         if args.controlled_scores_into_right_net
         else "RIGHT team (−x primary) — no mirrored opposing policy"
     )
-    print(f"Single-ego training: {roster} (see train/single_training_constants.py for reward/PPO knobs)")
+    print(f"Single-ego training: {roster} (rewards: sim/reward_weights.py; PPO/time: single_training_constants)")
 
     log_dir = Path(args.log_dir)
     model_dir = Path(args.model_dir)
@@ -166,7 +227,9 @@ def main() -> None:
         print(f"Resuming from {base}.zip …")
         model = PPO.load(str(base), env=train_envs, device="cpu", tensorboard_log=str(log_dir))
     else:
+        policy_kwargs = dict(net_arch=[128, 128])
         model = PPO(
+            policy_kwargs=policy_kwargs,
             policy="MlpPolicy",
             env=train_envs,
             n_steps=stc.PPO_N_STEPS,
@@ -195,8 +258,17 @@ def main() -> None:
         reset_num_timesteps=bool(args.resume is None),
     )
 
-    final_path = model_dir / f"{model_base}_final"
+    final_path = model_dir / f"{model_base}"
     model.save(str(final_path))
+
+    watch_argv = _watch_command_line(
+        final_zip_stem=final_path,
+        controlled_scores_into_right_net=args.controlled_scores_into_right_net,
+        frame_skip=args.frame_skip,
+        episodes=args.watch_episodes,
+    )
+    watch_one_liner = _format_shell_command(watch_argv)
+
     print(rf"""
         ╔══════════════════════════════════════════════════════════════╗
         ║                                                              ║
@@ -218,6 +290,13 @@ def main() -> None:
         ║                                                              ║
         ╚══════════════════════════════════════════════════════════════╝
         """)
+    print("Watch this checkpoint in the pygame demo (other roster = heuristic chase):\n")
+    print(f"  {watch_one_liner}\n")
+    print("Tip: add  --watch  on the next training run to open this automatically.\n")
+
+    if args.watch:
+        print("Launching watch (--watch) …\n")
+        subprocess.run(watch_argv, check=False, cwd=str(_ROOT))
 
     train_envs.close()
     eval_env.close()
