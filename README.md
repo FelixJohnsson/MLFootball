@@ -2,6 +2,8 @@
 
 Top-down pitch sim (Pygame demo + headless stepping + PPO training for 2-vs-2 with shared weights).
 
+![Blue PPO teammates against the green shooting heuristic](docs/demo.gif)
+
 **Team rule:** spatial **LEFT** team (pitch −x half, `ATTACK_RIGHT_GOAL_*` spawn bands) always attacks the **+x (right)** goal mouth; spatial **RIGHT** team (+x half, `ATTACK_LEFT_GOAL_*`) always attacks **−x (left)**. In code this is selected by `GameState.controlled_scores_into_right_net`: `True` = RL controls **LEFT_TEAM** (scores +x); `False` = RL controls **RIGHT_TEAM** (scores −x).
 
 ## Layout
@@ -121,6 +123,7 @@ Geometry is fixed: **LEFT_TEAM** agents (blue) vs **RIGHT_TEAM** (green) vs solo
 | `--fps`                          | `60`                             | Pygame FPS cap                                                                                                                  |
 | `--frame_skip`                   | `4`                              | Must match training `frame_skip`                                                                                                |
 | `--dt`                           | `1/60`                           | Simulation timestep (seconds)                                                                                                   |
+| `--gif PATH`                     | _(none)_                         | Write a short GIF and exit (needs Pillow). Length, rate, and width: `--gif-seconds` (12), `--gif-fps` (12), `--gif-width` (640). |
 
 Examples:
 
@@ -130,6 +133,7 @@ python train/watch.py --model ./models/checkpoints/ppo_football_2v2_50000_steps
 python train/watch.py --model_left models/ppo_football_2v2_LEFT_TEAM_v1_final --model_right models/ppo_football_2v2_RIGHT_TEAM_v1_final
 python train/watch.py --opposing_team_policy
 python train/watch.py --opposing_team_policy --opposing_team_model ./models/other_run/best_model
+python train/watch.py --model_left models/best_model_LEFT_TEAM_v1.2_against_model/best_model --no_human_pawn --gif docs/demo.gif
 ```
 
 ### `python headless.py`
